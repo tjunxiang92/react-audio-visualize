@@ -15,9 +15,10 @@ export const calculateBarData = (
   height: number,
   width: number,
   barWidth: number,
-  gap: number
+  gap: number,
+  channel: number = 0
 ): dataPoint[] => {
-  const bufferData = buffer.getChannelData(0);
+  const bufferData = buffer.getChannelData(channel);
   const units = width / (barWidth + gap);
   const step = Math.floor(bufferData.length / units);
   const amp = height / 2;
@@ -66,7 +67,7 @@ export const calculateBarData = (
 };
 
 export const draw = (
-  data: dataPoint[],
+  data: dataPoint[][],
   canvas: HTMLCanvasElement,
   barWidth: number,
   gap: number,
@@ -89,25 +90,31 @@ export const draw = (
   }
 
   const playedPercent = (currentTime || 0) / duration;
-
-  data.forEach((dp, i) => {
+  data.forEach(([left, right], i) => {
     const mappingPercent = i / data.length;
     const played = playedPercent > mappingPercent;
     ctx.fillStyle = played && barPlayedColor ? barPlayedColor : barColor;
-
     const x = i * (barWidth + gap);
-    const y = amp + dp.min;
     const w = barWidth;
-    const h = amp + dp.max - y;
 
+    // Left Channel (Top Bars). min - lowest point (-X), max - highest point (+X), amp - half canvas height, y - 0 is top
+    const leftPower = (-left.min + left.max) / 2
+    const topY = amp - leftPower;
+    const topH = amp - topY + 1; // TODO: To keep 1?
+    // Right Channel (Bottom Bars)
+    const rightPower = (-right.min + right.max) / 2
+    const btmY = amp;
+    const btmH = rightPower;
     ctx.beginPath();
     if (ctx.roundRect) {
       // making sure roundRect is supported by the browser
-      ctx.roundRect(x, y, w, h, 50);
+      ctx.roundRect(x, topY, w, topH, 50);
+      ctx.roundRect(x, btmY, w, btmH, 50);
       ctx.fill();
     } else {
       // fallback for browsers that do not support roundRect
-      ctx.fillRect(x, y, w, h);
+      ctx.fillRect(x, topY, w, topH);
+      ctx.fillRect(x, btmY, w, btmH);
     }
   });
 };
