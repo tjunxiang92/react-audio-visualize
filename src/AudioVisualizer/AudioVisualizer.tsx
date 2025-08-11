@@ -19,9 +19,9 @@ interface Props {
    */
   width?: number;
   /**
-   * Height of the visualizer
+   * Height of the visualizer. If not provided, will take full height of container
    */
-  height: number;
+  height?: number;
   /**
    * Width of each individual bar in the visualization. Default: `2`
    */
@@ -42,6 +42,14 @@ interface Props {
    * Color for the bars that have been played: Default: `"rgb(160, 198, 255)""`
    */
   barPlayedColor?: string;
+  /**
+   * Color for muted channel bars: Default: `"rgb(220, 220, 220)"`
+   */
+  barMuteColor?: string;
+  /**
+   * Which channel to mute: "off" (no mute), "left", or "right". Default: `"off"`
+   */
+  muteChannel?: "off" | "left" | "right";
   /**
    * Current time stamp till which the audio blob has been played.
    * Visualized bars that fall before the current time will have `barPlayerColor`, while that ones that fall after will have `barColor`
@@ -66,7 +74,7 @@ const AudioVisualizer = forwardRef<HTMLCanvasElement, Props>(
     {
       blob,
       width: propWidth,
-      height,
+      height: propHeight,
       barWidth = 2,
       gap = 1,
       currentTime,
@@ -74,6 +82,8 @@ const AudioVisualizer = forwardRef<HTMLCanvasElement, Props>(
       backgroundColor = "transparent",
       barColor = "rgb(184, 184, 184)",
       barPlayedColor = "rgb(160, 198, 255)",
+      barMuteColor = "rgb(220, 220, 220)",
+      muteChannel = "off",
       onSeek
     }: Props,
     ref?: ForwardedRef<HTMLCanvasElement>
@@ -83,6 +93,19 @@ const AudioVisualizer = forwardRef<HTMLCanvasElement, Props>(
     const [data, setData] = useState<dataPoint[][]>([]);
     const [duration, setDuration] = useState<number>(0);
     const [width, setWidth] = useState<number>(propWidth || 0);
+    const [height, setHeight] = useState<number>(propHeight || 200);
+
+    // Define updateDimensions function outside useEffect so it can be exposed
+    const updateDimensions = () => {
+      if (containerRef.current) {
+        if (!propWidth) {
+          setWidth(containerRef.current.offsetWidth);
+        }
+        if (!propHeight) {
+          setHeight(containerRef.current.offsetHeight);
+        }
+      }
+    };
 
     useImperativeHandle<HTMLCanvasElement | null, HTMLCanvasElement | null>(
       ref,
@@ -90,23 +113,50 @@ const AudioVisualizer = forwardRef<HTMLCanvasElement, Props>(
       []
     );
 
-    // Handle window resize
+    // Handle container resize using ResizeObserver for width and height
     useEffect(() => {
       if (propWidth) {
         setWidth(propWidth);
-        return;
+      }
+      if (propHeight) {
+        setHeight(propHeight);
       }
 
-      const updateWidth = () => {
-        if (containerRef.current) {
-          setWidth(containerRef.current.offsetWidth);
-        }
-      };
+      // Use ResizeObserver with debouncing for better performance
+      if (!propWidth || !propHeight) {
+        let resizeTimeout: NodeJS.Timeout;
+        
+        const resizeObserver = new ResizeObserver((entries) => {
+          // Clear the previous timeout
+          clearTimeout(resizeTimeout);
+          
+          // Debounce the resize handling
+          resizeTimeout = setTimeout(() => {
+            for (const entry of entries) {
+              if (!propWidth) {
+                const newWidth = entry.contentRect.width;
+                if (newWidth > 0) setWidth(newWidth);
+              }
+              if (!propHeight) {
+                const newHeight = entry.contentRect.height;
+                if (newHeight > 0) setHeight(newHeight);
+              }
+            }
+          }, 100); // 100ms debounce delay
+        });
 
-      updateWidth();
-      window.addEventListener('resize', updateWidth);
-      return () => window.removeEventListener('resize', updateWidth);
-    }, [propWidth]);
+        if (containerRef.current) {
+          resizeObserver.observe(containerRef.current);
+          // Initial measurement
+          updateDimensions();
+        }
+
+        return () => {
+          clearTimeout(resizeTimeout);
+          resizeObserver.disconnect();
+        };
+      }
+    }, [propWidth, propHeight]);
 
     // Handle click for seeking
     const handleCanvasClick = (e: React.MouseEvent<HTMLCanvasElement>) => {
@@ -121,7 +171,7 @@ const AudioVisualizer = forwardRef<HTMLCanvasElement, Props>(
 
     useEffect(() => {
       const processBlob = async (): Promise<void> => {
-        if (!canvasRef.current || !width) return;
+        if (!canvasRef.current || !width || !height) return;
 
         if (!blob) {
           return;
@@ -159,11 +209,11 @@ const AudioVisualizer = forwardRef<HTMLCanvasElement, Props>(
       };
 
       processBlob();
-    }, [blob, width]);
+    }, [blob, width, height]);
 
     // Redraw when data changes
     useEffect(() => {
-      if (!canvasRef.current || !width) return;
+      if (!canvasRef.current || !width || !height) return;
 
       if (data.length > 0) {
         draw(
@@ -175,10 +225,12 @@ const AudioVisualizer = forwardRef<HTMLCanvasElement, Props>(
           barColor,
           barPlayedColor,
           currentTime,
-          duration
+          duration,
+          barMuteColor,
+          muteChannel
         );
       }
-    }, [currentTime, duration, width, data]);
+    }, [currentTime, duration, width, height, data, barMuteColor, muteChannel]);
 
     const canvasElement = (
       <canvas
@@ -193,9 +245,16 @@ const AudioVisualizer = forwardRef<HTMLCanvasElement, Props>(
       />
     );
 
-    if (!propWidth) {
+    if (!propWidth || !propHeight) {
       return (
-        <div ref={containerRef} style={{ width: '100%' }}>
+        <div 
+          ref={containerRef} 
+          style={{ 
+            width: propWidth ? `${propWidth}px` : '100%',
+            height: propHeight ? `${propHeight}px` : '100%',
+            position: 'relative'
+          }}
+        >
           {canvasElement}
         </div>
       );

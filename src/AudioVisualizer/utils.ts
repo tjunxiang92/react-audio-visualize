@@ -75,7 +75,9 @@ export const draw = (
   barColor: string,
   barPlayedColor?: string,
   currentTime: number = 0,
-  duration: number = 1
+  duration: number = 1,
+  barMuteColor?: string,
+  muteChannel?: "off" | "left" | "right"
 ): void => {
   const amp = canvas.height / 2;
 
@@ -93,7 +95,6 @@ export const draw = (
   data.forEach(([left, right], i) => {
     const mappingPercent = i / data.length;
     const played = playedPercent > mappingPercent;
-    ctx.fillStyle = played && barPlayedColor ? barPlayedColor : barColor;
     const x = i * (barWidth + gap);
     const w = barWidth;
 
@@ -101,19 +102,43 @@ export const draw = (
     const leftPower = (-left.min + left.max) / 2
     const topY = amp - leftPower;
     const topH = amp - topY + 1; // TODO: To keep 1?
+
     // Right Channel (Bottom Bars)
     const rightPower = (-right.min + right.max) / 2
     const btmY = amp;
     const btmH = rightPower;
+    
+    // Draw left channel (top bars)
+    if (muteChannel === "left" && barMuteColor) {
+      // Left channel is muted - use mute color without played color
+      ctx.fillStyle = barMuteColor;
+    } else {
+      // Normal coloring for left channel
+      ctx.fillStyle = played && barPlayedColor ? barPlayedColor : barColor;
+    }
+    
     ctx.beginPath();
     if (ctx.roundRect) {
-      // making sure roundRect is supported by the browser
       ctx.roundRect(x, topY, w, topH, 50);
+      ctx.fill();
+    } else {
+      ctx.fillRect(x, topY, w, topH);
+    }
+    
+    // Draw right channel (bottom bars)
+    if (muteChannel === "right" && barMuteColor) {
+      // Right channel is muted - use mute color without played color
+      ctx.fillStyle = barMuteColor;
+    } else {
+      // Normal coloring for right channel
+      ctx.fillStyle = played && barPlayedColor ? barPlayedColor : barColor;
+    }
+    
+    ctx.beginPath();
+    if (ctx.roundRect) {
       ctx.roundRect(x, btmY, w, btmH, 50);
       ctx.fill();
     } else {
-      // fallback for browsers that do not support roundRect
-      ctx.fillRect(x, topY, w, topH);
       ctx.fillRect(x, btmY, w, btmH);
     }
   });

@@ -11,10 +11,13 @@ function App() {
   const [playbackRate, setPlaybackRate] = useState(1);
   const [showSeparateChannels, setShowSeparateChannels] = useState(false);
   const [useFixedWidth, setUseFixedWidth] = useState(false);
+  const [useFixedHeight, setUseFixedHeight] = useState(true);
+  const [muteChannel, setMuteChannel] = useState<"off" | "left" | "right">("off");
   const [fileName, setFileName] = useState('');
   
   const audioRef = useRef<HTMLAudioElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const visualizerRef = useRef<HTMLCanvasElement>(null);
 
   useEffect(() => {
     const audio = audioRef.current;
@@ -119,11 +122,13 @@ function App() {
     <div className="app">
       <div className="container">
         <h1>🎵 AudioVisualizer Feature Demo</h1>
-        <p>This example demonstrates the three new features:</p>
+        <p>This example demonstrates the key features:</p>
         <ul>
           <li><strong>Interactive Seekbar:</strong> Click on waveform to seek</li>
           <li><strong>Responsive Width:</strong> Resizes with window</li>
+          <li><strong>Dynamic Height:</strong> Adapts to container height</li>
           <li><strong>Dual Channel:</strong> Separate left/right visualization</li>
+          <li><strong>Channel Muting:</strong> Mute left or right channel with custom color</li>
         </ul>
         
         <div 
@@ -180,22 +185,68 @@ function App() {
                   />
                   {' '}Fixed Width (800px)
                 </label>
+                <label>
+                  <input
+                    type="checkbox"
+                    checked={useFixedHeight}
+                    onChange={(e) => setUseFixedHeight(e.target.checked)}
+                  />
+                  {' '}Fixed Height (120px)
+                </label>
+              </div>
+              <div style={{ marginTop: '10px', display: 'flex', gap: '15px', alignItems: 'center' }}>
+                <span>Mute Channel:</span>
+                <label>
+                  <input
+                    type="radio"
+                    name="muteChannel"
+                    checked={muteChannel === "off"}
+                    onChange={() => setMuteChannel("off")}
+                  />
+                  {' '}None
+                </label>
+                <label>
+                  <input
+                    type="radio"
+                    name="muteChannel"
+                    checked={muteChannel === "left"}
+                    onChange={() => setMuteChannel("left")}
+                  />
+                  {' '}Left (Top)
+                </label>
+                <label>
+                  <input
+                    type="radio"
+                    name="muteChannel"
+                    checked={muteChannel === "right"}
+                    onChange={() => setMuteChannel("right")}
+                  />
+                  {' '}Right (Bottom)
+                </label>
               </div>
             </div>
 
-            <div className="visualizer-container">
+            <div className="visualizer-container" style={{ 
+              height: useFixedHeight ? '120px' : '200px',
+              border: '1px solid #e0e0e0',
+              borderRadius: '4px',
+              padding: '10px',
+              transition: 'height 0.3s ease'
+            }}>
               <AudioVisualizer
+                ref={visualizerRef}
                 blob={audioBlob}
                 width={useFixedWidth ? 800 : undefined}
-                height={80}
+                height={useFixedHeight ? 120 : undefined}
                 currentTime={currentTime}
                 onSeek={handleSeek}
                 barColor="rgb(184, 184, 184)"
                 barPlayedColor="rgb(160, 198, 255)"
+                barMuteColor="rgb(240, 240, 240)"
+                muteChannel={muteChannel}
                 backgroundColor="rgb(250, 250, 250)"
                 style={{ 
                   display: 'block',
-                  width: '100%'
                 }}
               />
             </div>
@@ -242,7 +293,9 @@ function App() {
               <ul style={{ margin: 0, paddingLeft: '20px' }}>
                 <li><strong>Click on waveform</strong> to seek to any position</li>
                 <li><strong>Resize window</strong> to see responsive width (when fixed width is off)</li>
+                <li><strong>Toggle fixed height</strong> to see dynamic height adjustment</li>
                 <li><strong>Toggle dual channels</strong> to see left/right separation</li>
+                <li><strong>Mute channels</strong> to see muted visualization in gray</li>
                 <li><strong>Hover cursor</strong> changes to pointer when seekable</li>
               </ul>
             </div>
