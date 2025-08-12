@@ -7,7 +7,7 @@ import {
   useEffect,
 } from "react";
 import { type dataPoint } from "./types";
-import { calculateBarData, draw } from "./utils";
+import { draw, processAudioBlob, sampleBarData } from "./utils";
 
 interface Props {
   /**
@@ -94,6 +94,7 @@ const AudioVisualizer = forwardRef<HTMLCanvasElement, Props>(
     const [duration, setDuration] = useState<number>(0);
     const [width, setWidth] = useState<number>(propWidth || 0);
     const [height, setHeight] = useState<number>(propHeight || 200);
+    const [cachedAudioData, setCachedAudioData] = useState<{ leftData: dataPoint[], rightData: dataPoint[] } | null>(null);
 
     // Define updateDimensions function outside useEffect so it can be exposed
     const updateDimensions = () => {
@@ -169,47 +170,43 @@ const AudioVisualizer = forwardRef<HTMLCanvasElement, Props>(
       onSeek(seekTime);
     };
 
+    // Process blob once and cache the fixed-resolution data
     useEffect(() => {
       const processBlob = async (): Promise<void> => {
-        if (!canvasRef.current || !width || !height) return;
-
         if (!blob) {
+          setCachedAudioData(null);
+          setDuration(0);
           return;
         }
 
-        const audioBuffer = await blob.arrayBuffer();
-        const audioContext = new AudioContext();
-        await audioContext.decodeAudioData(audioBuffer, (buffer) => {
-          if (!canvasRef.current) return;
-          setDuration(buffer.duration);
-          
-          // Mix channels or use mono
-          const leftData = calculateBarData(
-            buffer,
-            height,
-            width,
-            barWidth,
-            gap,
-            0
-          );
-          const rightData = buffer.numberOfChannels >= 2 
-            ? calculateBarData(
-              buffer,
-              height,
-              width,
-              barWidth,
-              gap,
-              1
-            ) 
-            : leftData;
-          
-          const zipped = leftData.map((left, index) => [left, rightData[index]]);
-          setData(zipped);
-        });
+        try {
+          const result = await processAudioBlob(blob);
+          setCachedAudioData({ leftData: result.leftData, rightData: result.rightData });
+          setDuration(result.duration);
+        } catch (error) {
+          console.error('Error processing audio blob:', error);
+          setCachedAudioData(null);
+          setDuration(0);
+        }
       };
 
       processBlob();
-    }, [blob, width, height]);
+    }, [blob]);
+
+    // Sample from cached data when dimensions change
+    useEffect(() => {
+      if (!cachedAudioData || !width || !height) {
+        setData([]);
+        return;
+      }
+
+      const targetBars = Math.floor(width / (barWidth + gap));
+      const leftSampled = sampleBarData(cachedAudioData.leftData, targetBars, height);
+      const rightSampled = sampleBarData(cachedAudioData.rightData, targetBars, height);
+      
+      const zipped = leftSampled.map((left, index) => [left, rightSampled[index]]);
+      setData(zipped);
+    }, [cachedAudioData, width, height, barWidth, gap]);
 
     // Redraw when data changes
     useEffect(() => {
@@ -240,7 +237,7 @@ const AudioVisualizer = forwardRef<HTMLCanvasElement, Props>(
         onClick={handleCanvasClick}
         style={{
           ...style,
-          cursor: onSeek ? 'pointer' : 'default',
+          cursor: onSeek ? 'pointer' : 'default'
         }}
       />
     );
